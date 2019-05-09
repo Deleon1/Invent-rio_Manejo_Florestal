@@ -68,6 +68,7 @@ Tab_Vol_Arv$VolArv_m3 = tapply(cubagem$VolCC_m3, cubagem$COD_ARV, sum)[Tab_Vol_A
 
 Tab_Vol_Arv$inv_DAP=1/Tab_Vol_Arv$DAP
 
+library(ggplot2)
 ggplot(
   data = Tab_Vol_Arv,
   aes(x = DAP, y = VolArv_m3))+
@@ -133,7 +134,6 @@ TabResVol$Erro_Vol_Eq1 = (TabResVol$Vol_Obs - TabResVol$Vol_Eq1)/TabResVol$Vol_O
 TabResVol$Erro_Vol_Eq2 = (TabResVol$Vol_Obs - TabResVol$Vol_Eq2)/TabResVol$Vol_Obs
 
 # Análise gráfica dos resíduos para a população
-library(ggplot2)
 library(grid)
 
 viewport = viewport(
@@ -182,7 +182,7 @@ print(
     layout.pos.col = 1))
 
 
-# Análise gráfica Volume observado x VOlume estimado
+# Análise gráfica Volume observado x Volume estimado
 viewport = viewport(
   layout = grid.layout(2,1)
 )
