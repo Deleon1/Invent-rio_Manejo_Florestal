@@ -3,7 +3,6 @@ cubagem = read.csv("DadosCubagem.csv", header = TRUE, sep = ';', dec = ',')
 head(cubagem)
 
 names(cubagem)
-cubagem = cubagem[,-9]
 cubagem$DSC = cubagem$DCC - 2*cubagem$Esp_casca_cm
 
 cubagem = cubagem[order(cubagem$POSICAO, decreasing = FALSE),]
@@ -27,21 +26,21 @@ cubagem=cubagem[c("COD_ESP","COD_ARV","FAZENDA", "MATGEN","ESPACAMENTO", "ARVORE
 cubagem_orig = cubagem
 
 # Consistência dos dados de cubagem
-verificar = cubagem[cubagem$DAP<0 | cubagem$POSICAO<0 | cubagem$DSC<0,]
+erro_cubagem = cubagem[cubagem$DAP<0 | cubagem$POSICAO<0 | cubagem$DSC<0,]
 
 for (i in  seq(from=2, to = length(cubagem$FAZENDA), by=1)) {
   if (cubagem$ARVORE[i]==cubagem$ARVORE[i-1]) {
     if ((cubagem$DAP[i]<cubagem$DAP[i-1])|(cubagem$POSICAO[i]<cubagem$POSICAO[i-1])|
         (cubagem$HT[i]!=cubagem$HT[i-1])|(cubagem$DSC[i]>cubagem$DSC[i-1])) {
-      verificar = rbind(verificar, cubagem[i,])
+      erro_cubagem = rbind(erro_cubagem, cubagem[i,])
     }
   }
 }
 
-verificar = cubagem[cubagem$COD_ARV %in%verificar$COD_ARV,]
-verificar
+erro_cubagem = cubagem[cubagem$COD_ARV %in%erro_cubagem$COD_ARV,]
+erro_cubagem
 
-cubagem = cubagem[!(cubagem$COD_ARV %in% verificar$COD_ARV),]
+cubagem = cubagem[!(cubagem$COD_ARV %in% erro_cubagem$COD_ARV),]
 
 row.names(cubagem) = seq(from = 1, to = length(cubagem[,1]), by = 1)
 for(i in as.integer(row.names(cubagem))){
@@ -65,22 +64,34 @@ Tab_Vol_Arv = data.frame("COD_ESP"=cubagem$COD_ESP,"COD_ARV"=cubagem$COD_ARV,
 Tab_Vol_Arv = unique(Tab_Vol_Arv)
 row.names(Tab_Vol_Arv) = seq(from=1, to=length(Tab_Vol_Arv[,1]), by=1 )
 
-Tab_Vol_Arv$VolArv_m3 = tapply(cubagem$VolCC_m3, cubagem$COD_ARV, sum)[c(Tab_Vol_Arv$COD_ARV)]
+Tab_Vol_Arv$VolArv_m3 = tapply(cubagem$VolCC_m3, cubagem$COD_ARV, sum)[Tab_Vol_Arv$COD_ARV]
 
 Tab_Vol_Arv$inv_DAP=1/Tab_Vol_Arv$DAP
 
-plot(Tab_Vol_Arv$VolArv_m3~Tab_Vol_Arv$DAP, pch = 20, lwd = 0.5, xlab=("DAP"), ylab=("Vol"))
+ggplot(
+  data = Tab_Vol_Arv,
+  aes(x = DAP, y = VolArv_m3))+
+  geom_point()+
+  theme_classic()+
+  xlab("DAP (cm)")+
+  ylab("Vol (m3)")
 
 for (i in unique(Tab_Vol_Arv$COD_ESP)) {
-  plot(Tab_Vol_Arv[Tab_Vol_Arv$COD_ESP == i,"VolArv_m3"]~
-         Tab_Vol_Arv[Tab_Vol_Arv$COD_ESP == i,"DAP"], xlab=("DAP"), ylab=("Vol"), main =i, 
-       pch = 20, lwd = 0.5)
+  print(ggplot(
+    data = Tab_Vol_Arv[Tab_Vol_Arv$COD_ESP == i,c("DAP","VolArv_m3")],
+    aes(x = DAP, y = VolArv_m3))+
+    geom_point()+
+    theme_classic()+
+    ggtitle(i)+
+    theme(plot.title = element_text(hjust = 0.5))+
+    xlab("DAP (cm)")+
+    ylab("Vol (m3)"))
 }
 
 # Ajuste equações por espaçamento
 Tab_Vol_Arv$Vol_Eq1 = c()
 Tab_Vol_Arv$Vol_Eq2 = c()
-Equacoes = list()
+Equacoes_Vol = list()
 
 for(i in unique(Tab_Vol_Arv$COD_ESP)){
   Tabela_Espacamento = Tab_Vol_Arv[Tab_Vol_Arv$COD_ESP == i, 5:8]
@@ -98,30 +109,30 @@ for(i in unique(Tab_Vol_Arv$COD_ESP)){
   anova(Eq2_vol)
   summary(Eq2_vol)
   
-  Equacoes[[i]][["Eq1_vol"]] = Eq1_vol
-  Equacoes[[i]][["Eq2_vol"]] = Eq2_vol
+  Equacoes_Vol[[i]][["Eq1_vol"]] = Eq1_vol
+  Equacoes_Vol[[i]][["Eq2_vol"]] = Eq2_vol
   
   Tab_Vol_Arv[Tab_Vol_Arv$COD_ESP == i, "Vol_Eq1"] = 
-    exp(Equacoes[[i]][["Eq1_vol"]]$coefficients[1] + 
-          Equacoes[[i]][["Eq1_vol"]]$coefficients[2]*log(Tab_Vol_Arv[Tab_Vol_Arv$COD_ESP == i,
+    exp(Equacoes_Vol[[i]][["Eq1_vol"]]$coefficients[1] + 
+          Equacoes_Vol[[i]][["Eq1_vol"]]$coefficients[2]*log(Tab_Vol_Arv[Tab_Vol_Arv$COD_ESP == i,
                                                                      "DAP"])+
-          Equacoes[[i]][["Eq1_vol"]]$coefficients[3]*log(Tab_Vol_Arv[Tab_Vol_Arv$COD_ESP == i,
+          Equacoes_Vol[[i]][["Eq1_vol"]]$coefficients[3]*log(Tab_Vol_Arv[Tab_Vol_Arv$COD_ESP == i,
                                                                      "HT"]))
   
   Tab_Vol_Arv[Tab_Vol_Arv$COD_ESP == i, "Vol_Eq2"] = 
-    exp(Equacoes[[i]][["Eq2_vol"]]$coefficients[1] + 
-          Equacoes[[i]][["Eq2_vol"]]$coefficients[2]*Tab_Vol_Arv[Tab_Vol_Arv$COD_ESP == i,
+    exp(Equacoes_Vol[[i]][["Eq2_vol"]]$coefficients[1] + 
+          Equacoes_Vol[[i]][["Eq2_vol"]]$coefficients[2]*Tab_Vol_Arv[Tab_Vol_Arv$COD_ESP == i,
                                                                  "inv_DAP"])
 }
 
 # Cálculo dos resíduos
 TabResVol = data.frame("COD_ESP" = Tab_Vol_Arv$COD_ESP, "Arvore"=Tab_Vol_Arv$ARVORE, "Vol_Obs"=Tab_Vol_Arv$VolArv_m3, 
-                       "Vol_Eq_vol1" = Tab_Vol_Arv$Vol_Eq1, 
-                       "Vol_Eq_vol2" = Tab_Vol_Arv$Vol_Eq2)
-TabResVol$Erro_Eq_vol1 = (TabResVol$Vol_Obs - TabResVol$Vol_Eq_vol1)/TabResVol$Vol_Obs
-TabResVol$Erro_Eq_vol2 = (TabResVol$Vol_Obs - TabResVol$Vol_Eq_vol2)/TabResVol$Vol_Obs
+                       "Vol_Eq1" = Tab_Vol_Arv$Vol_Eq1, 
+                       "Vol_Eq2" = Tab_Vol_Arv$Vol_Eq2)
+TabResVol$Erro_Vol_Eq1 = (TabResVol$Vol_Obs - TabResVol$Vol_Eq1)/TabResVol$Vol_Obs
+TabResVol$Erro_Vol_Eq2 = (TabResVol$Vol_Obs - TabResVol$Vol_Eq2)/TabResVol$Vol_Obs
 
-# Análise gráfica dos resíduos da população
+# Análise gráica dos resíduos da população
 library(ggplot2)
 library(grid)
 
@@ -132,45 +143,46 @@ viewport = viewport(
 grid.newpage()
 pushViewport(viewport)
 
-ResiduoEq1_vol = ggplot(
+ResiduoEq_vol1 = ggplot(
   data = TabResVol,
-  aes(x = Vol_Obs, y = Erro_Eq_vol1))+
+  aes(x = Vol_Obs, y = Erro_Vol_Eq1))+
   geom_point(lwd=0.5)+
   theme_classic()+
   ggtitle("Gráfico de Resíduo")+
   theme(plot.title = element_text(hjust = 0.5))+
   xlab("")+
   ylab("Resíduo")+
-  ylim(c(min(TabResVol$Erro_Eq_vol1,TabResVol$Erro_Eq_vol2),
-         max(TabResVol$Erro_Eq_vol1,TabResVol$Erro_Eq_vol2)))+
+  ylim(c(min(TabResVol$Erro_Vol_Eq1,TabResVol$Erro_Vol_Eq2),
+         max(TabResVol$Erro_Vol_Eq1,TabResVol$Erro_Vol_Eq2)))+
   geom_hline(yintercept=0, lwd = 0.1, col='Black')
 
 print(
-  x = ResiduoEq1_vol,
+  x = ResiduoEq_vol1,
   vp = viewport(
     layout.pos.row = 1,
     layout.pos.col = 1))
 
-ResiduoEq2_vol = ggplot(
+ResiduoEq_vol2 = ggplot(
   data = TabResVol,
-  aes(x = Vol_Obs, y = Erro_Eq_vol2))+
+  aes(x = Vol_Obs, y = Erro_Vol_Eq2))+
   geom_point(lwd=0.5)+
   theme_classic()+
   ggtitle("")+
   theme(plot.title = element_text(hjust = 0.5))+
   xlab("Volume Observado (m3)")+
   ylab("Resíduo")+
-  ylim(c(min(TabResVol$Erro_Eq_vol1,TabResVol$Erro_Eq_vol2),
-         max(TabResVol$Erro_Eq_vol1,TabResVol$Erro_Eq_vol2)))+
+  ylim(c(min(TabResVol$Erro_Vol_Eq1,TabResVol$Erro_Vol_Eq2),
+         max(TabResVol$Erro_Vol_Eq1,TabResVol$Erro_Vol_Eq2)))+
   geom_hline(yintercept=0, lwd = 0.1, col='Black')
 
 print(
-  x = ResiduoEq2_vol,
+  x = ResiduoEq_vol2,
   vp = viewport(
     layout.pos.row = 2,
     layout.pos.col = 1))
 
-# Análise gráfica ajuste 
+
+# Análise gráfica HT observado x HT estimado
 viewport = viewport(
   layout = grid.layout(2,1)
 )
@@ -180,15 +192,15 @@ pushViewport(viewport)
 
 PrecEq_vol1 = ggplot(
   data = TabResVol,
-  aes(x = Vol_Eq_vol1, y = Vol_Obs))+
+  aes(x = Vol_Eq1, y = Vol_Obs))+
   geom_point(lwd=0.5)+
   theme_classic()+
   ggtitle("Gráfico de Resíduo")+
   theme(plot.title = element_text(hjust = 0.5))+
   xlab("Volume Estimado Eq. 1")+
   ylab("Volume Observado")+
-  xlim(c(min(TabResVol$Vol_Eq_vol1,TabResVol$Vol_Eq_vol2),
-         max(TabResVol$Vol_Eq_vol1,TabResVol$Vol_Eq_vol2)))+
+  xlim(c(min(TabResVol$Vol_Eq1,TabResVol$Vol_Eq2),
+         max(TabResVol$Vol_Eq1,TabResVol$Vol_Eq2)))+
   geom_abline(alpha = 0.5, lwd = 0.1, col='Black')
 
 print(
@@ -199,15 +211,15 @@ print(
 
 PrecEq_vol2 = ggplot(
   data = TabResVol,
-  aes(x = Vol_Eq_vol2, y = Vol_Obs))+
+  aes(x = Vol_Eq2, y = Vol_Obs))+
   geom_point(lwd=0.5)+
   theme_classic()+
   ggtitle("")+
   theme(plot.title = element_text(hjust = 0.5))+
   xlab("Volume Estimado Eq. 2")+
   ylab("Volume Observado")+
-  xlim(c(min(TabResVol$Vol_Eq_vol1,TabResVol$Vol_Eq_vol2),
-         max(TabResVol$Vol_Eq_vol1,TabResVol$Vol_Eq_vol2)))+
+  xlim(c(min(TabResVol$Vol_Eq1,TabResVol$Vol_Eq2),
+         max(TabResVol$Vol_Eq1,TabResVol$Vol_Eq2)))+
   geom_abline(alpha = 0.5, lwd = 0.1, col='Black')
 
 print(
@@ -227,45 +239,46 @@ for (i in unique(TabResVol$COD_ESP)) {
   grid.newpage()
   pushViewport(viewport)
   
-  ResiduoEq1_vol = ggplot(
+  ResiduoEq_vol1 = ggplot(
     data = Aux_Residuo,
-    aes(x = Vol_Obs, y = Erro_Eq_vol1))+
+    aes(x = Vol_Obs, y = Erro_Vol_Eq1))+
     geom_point(lwd=0.5)+
     theme_classic()+
     ggtitle(paste("Gráfico de Resíduo", i, sep=" "))+
     theme(plot.title = element_text(hjust = 0.5))+
     xlab("")+
     ylab("Resíduo")+
-    ylim(c(min(Aux_Residuo$Erro_Eq_vol1,Aux_Residuo$Erro_Eq_vol2),
-           max(Aux_Residuo$Erro_Eq_vol1,Aux_Residuo$Erro_Eq_vol2)))+
+    ylim(c(min(Aux_Residuo$Erro_Vol_Eq1,Aux_Residuo$Erro_Vol_Eq2),
+           max(Aux_Residuo$Erro_Vol_Eq1,Aux_Residuo$Erro_Vol_Eq2)))+
     geom_hline(yintercept=0, lwd = 0.1, col='Black')
   
   print(
-    x = ResiduoEq1_vol,
+    x = ResiduoEq_vol1,
     vp = viewport(
       layout.pos.row = 1,
       layout.pos.col = 1))
   
-  ResiduoEq2_vol = ggplot(
+  ResiduoEq_vol2 = ggplot(
     data = Aux_Residuo,
-    aes(x = Vol_Obs, y = Erro_Eq_vol2))+
+    aes(x = Vol_Obs, y = Erro_Vol_Eq2))+
     geom_point(lwd=0.5)+
     theme_classic()+
     ggtitle("")+
     theme(plot.title = element_text(hjust = 0.5))+
     xlab("Volume Observado (m3)")+
     ylab("Resíduo")+
-    ylim(c(min(Aux_Residuo$Erro_Eq_vol1,Aux_Residuo$Erro_Eq_vol2),
-           max(Aux_Residuo$Erro_Eq_vol1,Aux_Residuo$Erro_Eq_vol2)))+
+    ylim(c(min(Aux_Residuo$Erro_Vol_Eq1,Aux_Residuo$Erro_Vol_Eq2),
+           max(Aux_Residuo$Erro_Vol_Eq1,Aux_Residuo$Erro_Vol_Eq2)))+
     geom_hline(yintercept=0, lwd = 0.1, col='Black')
   
   print(
-    x = ResiduoEq2_vol,
+    x = ResiduoEq_vol2,
     vp = viewport(
       layout.pos.row = 2,
       layout.pos.col = 1))
   
-  # Análise gráfica ajuste 
+
+  # Análise gráfica HT observado x HT estimado
   viewport = viewport(
     layout = grid.layout(2,1)
   )
@@ -275,15 +288,15 @@ for (i in unique(TabResVol$COD_ESP)) {
   
   PrecEq_vol1 = ggplot(
     data = Aux_Residuo,
-    aes(x = Vol_Eq_vol1, y = Vol_Obs))+
+    aes(x = Vol_Eq1, y = Vol_Obs))+
     geom_point(lwd=0.5)+
     theme_classic()+
     ggtitle(paste("Gráfico de Resíduo", i, sep=" "))+
     theme(plot.title = element_text(hjust = 0.5))+
     xlab("Volume Estimado Eq. 1")+
     ylab("Volume Observado")+
-    xlim(c(min(Aux_Residuo$Vol_Eq_vol1,Aux_Residuo$Vol_Eq_vol2),
-           max(Aux_Residuo$Vol_Eq_vol1,Aux_Residuo$Vol_Eq_vol2)))+
+    xlim(c(min(Aux_Residuo$Vol_Eq1,Aux_Residuo$Vol_Eq2),
+           max(Aux_Residuo$Vol_Eq1,Aux_Residuo$Vol_Eq2)))+
     geom_abline(alpha = 0.5, lwd = 0.1, col='Black')
   
   print(
@@ -294,15 +307,15 @@ for (i in unique(TabResVol$COD_ESP)) {
   
   PrecEq_vol2 = ggplot(
     data = Aux_Residuo,
-    aes(x = Vol_Eq_vol2, y = Vol_Obs))+
+    aes(x = Vol_Eq2, y = Vol_Obs))+
     geom_point(lwd=0.5)+
     theme_classic()+
     ggtitle("")+
     theme(plot.title = element_text(hjust = 0.5))+
     xlab("Volume Estimado Eq. 2")+
     ylab("Volume Observado")+
-    xlim(c(min(Aux_Residuo$Vol_Eq_vol1,Aux_Residuo$Vol_Eq_vol2),
-           max(Aux_Residuo$Vol_Eq_vol1,Aux_Residuo$Vol_Eq_vol2)))+
+    xlim(c(min(Aux_Residuo$Vol_Eq1,Aux_Residuo$Vol_Eq2),
+           max(Aux_Residuo$Vol_Eq1,Aux_Residuo$Vol_Eq2)))+
     geom_abline(alpha = 0.5, lwd = 0.1, col='Black')
   
   print(
