@@ -1,0 +1,357 @@
+# Inventário
+inventario = read.csv("Dados_Inventario.csv", header = TRUE, sep = ';', dec = ',')
+head(inventario)
+
+names(inventario)[3] = "TALHAO"
+
+inventario = inventario[order(inventario$OBS, decreasing = FALSE),]
+inventario = inventario[order(inventario$COVA, decreasing = FALSE),]
+inventario = inventario[order(inventario$PARCELA, decreasing = FALSE),]
+inventario = inventario[order(inventario$TALHAO, decreasing = FALSE),]
+inventario = inventario[order(inventario$ESPAC, decreasing = FALSE),]
+inventario = inventario[order(inventario$MG, decreasing = FALSE),]
+inventario = inventario[order(inventario$Projeto, decreasing = FALSE),]
+inventario = inventario[order(inventario$Fazenda, decreasing = FALSE),]
+row.names(inventario) = seq(from = 1, to = length(inventario[,1]), by = 1)
+
+# Consistência dos dados de inventário
+erro_inventario = inventario[inventario$DAP<=0|inventario$HT<0,]
+inventario = inventario[-as.integer(row.names(erro_inventario)),]
+row.names(inventario) = seq(from = 1, to = length(inventario[,1]), by = 1)
+
+inventario$COD_TALHAO = paste(inventario$Fazenda, inventario$Projeto, inventario$MG,
+                           inventario$ESPAC, inventario$TALHAO, sep = "_")
+
+inventario$COD_ESP = paste(inventario$Fazenda, inventario$Projeto, inventario$MG,
+                           inventario$ESPAC, sep = "_")
+
+inventario$HD = c()
+
+for (i in unique(inventario$COD_TALHAO)) {
+  aux_talhao = inventario[inventario$COD_TALHAO==i,]
+  for (j in unique(aux_talhao$PARCELA)) {
+    aux_HD = mean(aux_talhao[(aux_talhao$PARCELA == j) & (aux_talhao$OBS == "D"), "HT"])
+    inventario[inventario$COD_TALHAO == i & inventario$PARCELA == j,"HD"] = aux_HD
+  }
+}
+
+Tab_Ht = inventario[inventario$DAP>0 & inventario$HT>0,]
+
+Tab_Ht = data.frame("COD_TALHAO" = Tab_Ht$COD_TALHAO, "COD_ESP" = Tab_Ht$COD_ESP,
+                    "Fazenda" = Tab_Ht$Fazenda, "Talhao" = Tab_Ht$TALHAO, "MG" = Tab_Ht$MG,
+                    "Parcela"=Tab_Ht$PARCELA, "Cova" = Tab_Ht$COVA, "DAP" = Tab_Ht$DAP, "HT" = Tab_Ht$HT,
+                    "HD" = Tab_Ht$HD)
+
+row.names(Tab_Ht) = seq(from = 1, to = length(Tab_Ht[,1]), by = 1)
+
+library(ggplot2)
+ggplot(
+  data = Tab_Ht,
+  aes(x = DAP, y = HT))+
+  geom_point()+
+  theme_classic()+
+  xlab("DAP(cm)")+
+  ylab("HT(m)")+
+  geom_smooth(method = "lm", se = FALSE)
+
+for (i in unique(Tab_Ht$COD_ESP)) {
+  print(ggplot(
+    data = Tab_Ht[Tab_Ht$COD_ESP == i, c("DAP","HT")],
+    aes(x = DAP, y = HT))+
+    geom_point()+
+    theme_classic()+
+    ggtitle(i)+
+    theme(plot.title = element_text(hjust = 0.5))+
+    xlab("DAP(cm)")+
+    ylab("HT(m)")+
+    geom_smooth(method = "lm", se = FALSE))
+  }
+
+Tab_Ht$invDAP = 1/Tab_Ht$DAP
+
+# Ajuste equações hipsométricas por espaçamento
+Tab_Ht$HT_Eq1 = c()
+Tab_Ht$HT_Eq2 = c()
+Equacoes_HT = list()
+
+for(i in unique(Tab_Ht$COD_ESP)){
+  Tabela_Espacamento_HT = Tab_Ht[Tab_Ht$COD_ESP == i, c("HT", "HD", "invDAP")]
+  
+  ht_eq1 = lm(log(Tabela_Espacamento_HT$HT) ~ Tabela_Espacamento_HT$invDAP)
+  ht_eq1
+  summary(ht_eq1)
+  
+  ht_eq2 = lm(log(Tabela_Espacamento_HT$HT) ~ Tabela_Espacamento_HT$invDAP + 
+                log(Tabela_Espacamento_HT$HD))
+  ht_eq2
+  summary(ht_eq2)
+  
+  Equacoes_HT[[i]][["Eq1_HT"]] = ht_eq1
+  Equacoes_HT[[i]][["Eq2_HT"]] = ht_eq2
+  
+  Tab_Ht[Tab_Ht$COD_ESP == i, "HT_Eq1"] = 
+    exp(Equacoes_HT[[i]][["Eq1_HT"]]$coefficients[1] + 
+          Equacoes_HT[[i]][["Eq1_HT"]]$coefficients[2]*Tab_Ht[Tab_Ht$COD_ESP == i,
+                                                                  "invDAP"])
+  
+  Tab_Ht[Tab_Ht$COD_ESP == i, "HT_Eq2"] = 
+    exp(Equacoes_HT[[i]][["Eq2_HT"]]$coefficients[1] + 
+          Equacoes_HT[[i]][["Eq2_HT"]]$coefficients[2]*Tab_Ht[Tab_Ht$COD_ESP == i,"invDAP"]+
+          Equacoes_HT[[i]][["Eq2_HT"]]$coefficients[3]*log(Tab_Ht[Tab_Ht$COD_ESP == i,
+                                                                  "HD"]))
+}
+
+# Cálculo dos resíduos
+TabResHt = data.frame("COD_ESP" = Tab_Ht$COD_ESP,
+                      "HT" = Tab_Ht$HT,
+                      "HT_eq1" = Tab_Ht$HT_Eq1,
+                      "HT_eq2" = Tab_Ht$HT_Eq2,
+                      "Erro_HT_Eq1" = (Tab_Ht$HT - Tab_Ht$HT_Eq1)/Tab_Ht$HT,
+                      "Erro_HT_Eq2" = (Tab_Ht$HT - Tab_Ht$HT_Eq2)/Tab_Ht$HT)
+
+# Análise gráfica dos resíduos para a população
+library(grid)
+viewport = viewport(
+  layout = grid.layout(2,1)
+)
+
+grid.newpage()
+pushViewport(viewport)
+
+ResiduoEq_vol1 = ggplot(
+  data = TabResHt,
+  aes(x = HT, y = Erro_HT_Eq1))+
+  geom_point(lwd=0.5)+
+  theme_classic()+
+  ggtitle("Gráfico de Resíduo")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  xlab("")+
+  ylab("Resíduo")+
+  ylim(c(min(TabResHt$Erro_HT_Eq1,TabResHt$Erro_HT_Eq2),
+         max(TabResHt$Erro_HT_Eq1,TabResHt$Erro_HT_Eq2)))+
+  geom_hline(yintercept=0, lwd = 0.1, col='Black')
+
+print(
+  x = ResiduoEq_vol1,
+  vp = viewport(
+    layout.pos.row = 1,
+    layout.pos.col = 1))
+
+ResiduoEq_vol2 = ggplot(
+  data = TabResHt,
+  aes(x = HT, y = Erro_HT_Eq2))+
+  geom_point(lwd=0.5)+
+  theme_classic()+
+  ggtitle("")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  xlab("Altura Observada (m)")+
+  ylab("Resíduo")+
+  ylim(c(min(TabResHt$Erro_HT_Eq1,TabResHt$Erro_HT_Eq2),
+         max(TabResHt$Erro_HT_Eq1,TabResHt$Erro_HT_Eq2)))+
+  geom_hline(yintercept=0, lwd = 0.1, col='Black')
+
+print(
+  x = ResiduoEq_vol2,
+  vp = viewport(
+    layout.pos.row = 2,
+    layout.pos.col = 1))
+
+# Análise gráfica Ht observado x Ht estimado
+viewport = viewport(
+  layout = grid.layout(2,1)
+)
+
+grid.newpage()
+pushViewport(viewport)
+
+PrecEq_vol1 = ggplot(
+  data = TabResHt,
+  aes(x = HT_eq1, y = HT))+
+  geom_point(lwd=0.5)+
+  theme_classic()+
+  ggtitle("Gráfico de Resíduo")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  xlab("Altura Estimada Eq. 1")+
+  ylab("Altura Observada")+
+  xlim(c(min(TabResHt$HT_eq1,TabResHt$HT_eq2),
+         max(TabResHt$HT_eq1,TabResHt$HT_eq2)))+
+  geom_abline(alpha = 0.5, lwd = 0.1, col='Black')
+
+print(
+  x = PrecEq_vol1,
+  vp = viewport(
+    layout.pos.row = 1,
+    layout.pos.col = 1))
+
+PrecEq_vol2 = ggplot(
+  data = TabResHt,
+  aes(x = HT_eq2, y = HT))+
+  geom_point(lwd=0.5)+
+  theme_classic()+
+  ggtitle("")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  xlab("Altura Estimada Eq. 2")+
+  ylab("Altura Observada")+
+  xlim(c(min(TabResHt$HT_eq1,TabResHt$HT_eq2),
+         max(TabResHt$HT_eq1,TabResHt$HT_eq2)))+
+  geom_abline(alpha = 0.5, lwd = 0.1, col='Black')
+
+print(
+  x = PrecEq_vol2,
+  vp = viewport(
+    layout.pos.row = 2,
+    layout.pos.col = 1))
+
+
+# Análise gráfica resíduos por espaçamento
+for (i in unique(TabResHt$COD_ESP)) {
+  Aux_Residuo_Ht = TabResHt[TabResHt$COD_ESP == i , ]
+  viewport = viewport(
+    layout = grid.layout(2,1)
+  )
+  
+  grid.newpage()
+  pushViewport(viewport)
+  
+  ResiduoEq_vol1 = ggplot(
+    data = Aux_Residuo_Ht,
+    aes(x = HT, y = Erro_HT_Eq1))+
+    geom_point(lwd=0.5)+
+    theme_classic()+
+    ggtitle(paste("Gráfico de Resíduo", i, sep=" "))+
+    theme(plot.title = element_text(hjust = 0.5))+
+    xlab("")+
+    ylab("Resíduo")+
+    ylim(c(min(Aux_Residuo_Ht$Erro_HT_Eq1,Aux_Residuo_Ht$Erro_HT_Eq2),
+           max(Aux_Residuo_Ht$Erro_HT_Eq1,Aux_Residuo_Ht$Erro_HT_Eq2)))+
+    geom_hline(yintercept=0, lwd = 0.1, col='Black')
+  
+  print(
+    x = ResiduoEq_vol1,
+    vp = viewport(
+      layout.pos.row = 1,
+      layout.pos.col = 1))
+  
+  ResiduoEq_vol2 = ggplot(
+    data = Aux_Residuo_Ht,
+    aes(x = HT, y = Erro_HT_Eq2))+
+    geom_point(lwd=0.5)+
+    theme_classic()+
+    ggtitle("")+
+    theme(plot.title = element_text(hjust = 0.5))+
+    xlab("Altura Observada (m)")+
+    ylab("Resíduo")+
+    ylim(c(min(Aux_Residuo_Ht$Erro_HT_Eq1,Aux_Residuo_Ht$Erro_HT_Eq2),
+           max(Aux_Residuo_Ht$Erro_HT_Eq1,Aux_Residuo_Ht$Erro_HT_Eq2)))+
+    geom_hline(yintercept=0, lwd = 0.1, col='Black')
+  
+  print(
+    x = ResiduoEq_vol2,
+    vp = viewport(
+      layout.pos.row = 2,
+      layout.pos.col = 1))
+  
+  # Análise gráfica Ht observado x Ht estimado
+  viewport = viewport(
+    layout = grid.layout(2,1)
+  )
+  
+  grid.newpage()
+  pushViewport(viewport)
+  
+  PrecEq_vol1 = ggplot(
+    data = Aux_Residuo_Ht,
+    aes(x = HT_eq1, y = HT))+
+    geom_point(lwd=0.5)+
+    theme_classic()+
+    ggtitle(paste("Gráfico de Resíduo", i, sep=" "))+
+    theme(plot.title = element_text(hjust = 0.5))+
+    xlab("Altura Estimada Eq. 1")+
+    ylab("Altura Observada")+
+    xlim(c(min(Aux_Residuo_Ht$HT_eq1,Aux_Residuo_Ht$HT_eq2),
+           max(Aux_Residuo_Ht$HT_eq1,Aux_Residuo_Ht$HT_eq2)))+
+    geom_abline(alpha = 0.5, lwd = 0.1, col='Black')
+  
+  print(
+    x = PrecEq_vol1,
+    vp = viewport(
+      layout.pos.row = 1,
+      layout.pos.col = 1))
+  
+  PrecEq_vol2 = ggplot(
+    data = Aux_Residuo_Ht,
+    aes(x = HT_eq2, y = HT))+
+    geom_point(lwd=0.5)+
+    theme_classic()+
+    ggtitle("")+
+    theme(plot.title = element_text(hjust = 0.5))+
+    xlab("Altura Estimada Eq. 2")+
+    ylab("Altura Observada")+
+    xlim(c(min(Aux_Residuo_Ht$HT_eq1,Aux_Residuo_Ht$HT_eq2),
+           max(Aux_Residuo_Ht$HT_eq1,Aux_Residuo_Ht$HT_eq2)))+
+    geom_abline(alpha = 0.5, lwd = 0.1, col='Black')
+  
+  print(
+    x = PrecEq_vol2,
+    vp = viewport(
+      layout.pos.row = 2,
+      layout.pos.col = 1))
+}
+
+# Cálculo da altura por árvore
+inventario$Ht_Est = c()
+
+for(i in unique(inventario$COD_ESP)){
+  
+  inventario[inventario$COD_ESP == i, "Ht_Est"] = 
+    exp(Equacoes_HT[[i]][["Eq2_HT"]]$coefficients[1] + 
+          Equacoes_HT[[i]][["Eq2_HT"]]$coefficients[2] / 
+            inventario[inventario$COD_ESP == i,"DAP"]+
+          Equacoes_HT[[i]][["Eq2_HT"]]$coefficients[3] * 
+            log(inventario[inventario$COD_ESP == i, "HD"]))
+}
+
+ht_final = function(x){
+   if (x[1] > 0 ) {
+    y = x[1]
+  } else {
+    y = x[2]
+  }
+}
+
+inventario$HT_Final = apply(inventario[,c("HT", "Ht_Est")],1,FUN = ht_final) 
+
+# Cálculo do volume por árvore (m3)
+inventario$Vol_Arv = c()
+
+for(i in unique(inventario$COD_ESP)){
+  
+  inventario[inventario$COD_ESP == i, "Vol_Arv"] =
+    exp(Equacoes_Vol[[i]][["Eq1_vol"]]$coefficients[1] + 
+          Equacoes_Vol[[i]][["Eq1_vol"]]$coefficients[2]*log(inventario[inventario$COD_ESP == i,
+                                                                        "DAP"])+
+          Equacoes_Vol[[i]][["Eq1_vol"]]$coefficients[3]*log(inventario[inventario$COD_ESP == i,
+                                                                        "HT_Final"]))
+}
+
+# Cálculo do volume por parcela (m3/ha) e por talhão (m3)
+Inventario_Parcela = inventario[,c("COD_ESP","COD_TALHAO","AREA_TALHÃO", "PARCELA","AREA_PARCELA")]
+Inventario_Parcela = unique(Inventario_Parcela)
+Inventario_Parcela$Vol_parc = c()
+
+for (i in unique(inventario$COD_TALHAO)) {
+  aux_parcela = inventario[inventario$COD_TALHAO == i, c("PARCELA","Vol_Arv")]
+  Inventario_Parcela[Inventario_Parcela$COD_TALHAO == i, "Vol_parc"] = 
+    tapply(aux_parcela$Vol_Arv, aux_parcela$PARCELA, sum)
+}
+
+Inventario_Parcela$Vol_Parc_ha = Inventario_Parcela$Vol_parc/
+                                    (Inventario_Parcela$AREA_PARCELA/10000)
+
+Inventario_Parcela$Vol_Talhao_m3 = c()
+
+for (i in unique(Inventario_Parcela$COD_TALHAO)) {
+  Inventario_Parcela[Inventario_Parcela$COD_TALHAO == i, "Vol_Talhao_m3"] = 
+    mean(Inventario_Parcela[Inventario_Parcela$COD_TALHAO == i, "Vol_Parc_ha"]) *
+            unique(Inventario_Parcela[Inventario_Parcela$COD_TALHAO == i, "AREA_TALHÃO"])
+}
