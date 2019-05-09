@@ -132,7 +132,7 @@ TabResVol = data.frame("COD_ESP" = Tab_Vol_Arv$COD_ESP, "Arvore"=Tab_Vol_Arv$ARV
 TabResVol$Erro_Vol_Eq1 = (TabResVol$Vol_Obs - TabResVol$Vol_Eq1)/TabResVol$Vol_Obs
 TabResVol$Erro_Vol_Eq2 = (TabResVol$Vol_Obs - TabResVol$Vol_Eq2)/TabResVol$Vol_Obs
 
-# Análise gráica dos resíduos da população
+# Análise gráfica dos resíduos para a população
 library(ggplot2)
 library(grid)
 
@@ -182,7 +182,7 @@ print(
     layout.pos.col = 1))
 
 
-# Análise gráfica HT observado x HT estimado
+# Análise gráfica Volume observado x VOlume estimado
 viewport = viewport(
   layout = grid.layout(2,1)
 )
@@ -277,8 +277,8 @@ for (i in unique(TabResVol$COD_ESP)) {
       layout.pos.row = 2,
       layout.pos.col = 1))
   
-
-  # Análise gráfica HT observado x HT estimado
+  
+  # Análise gráfica Volume observado x Volume estimado
   viewport = viewport(
     layout = grid.layout(2,1)
   )
