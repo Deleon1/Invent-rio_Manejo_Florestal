@@ -1,8 +1,17 @@
-# Inventário
+# Inventário HT Florestal
 inventario = read.csv("Dados_Inventario.csv", header = TRUE, sep = ';', dec = ',')
+names(inventario)
 head(inventario)
 
-names(inventario)[3] = "TALHAO"
+inventario$DAP = inventario$CAP/pi
+
+names(inventario)[1] = "MG"
+names(inventario)[2] = "ESPAC"
+inventario$Fazenda = "Itamarandiba"
+inventario$Projeto = "Celulose" 
+
+inventario = inventario[,c("Fazenda", "Projeto", "TALHAO", "MG", "AREA_TALHAO", "DATA_PLANTIO", "ESPAC", "PARCELA",
+                           "DATA_MEDICAO", "AREA_PARCELA", "COVA", "FUSTE", "DAP", "HT", "OBS")]
 
 inventario = inventario[order(inventario$OBS, decreasing = FALSE),]
 inventario = inventario[order(inventario$COVA, decreasing = FALSE),]
@@ -15,15 +24,23 @@ inventario = inventario[order(inventario$Fazenda, decreasing = FALSE),]
 row.names(inventario) = seq(from = 1, to = length(inventario[,1]), by = 1)
 
 # Consistência dos dados de inventário
-erro_inventario = inventario[inventario$DAP<=0|inventario$HT<0,]
-inventario = inventario[-as.integer(row.names(erro_inventario)),]
+Covas_descartadas = inventario[inventario$DAP<=0|inventario$HT<0,]
+Covas_descartadas = rbind(Covas_descartadas, inventario[inventario$OBS == "M" | inventario$OBS == "F" , ])
+Covas_descartadas = unique(Covas_descartadas)
+length(Covas_descartadas[,1])
+
+inventario = inventario[-as.integer(row.names(Covas_descartadas)),]
 row.names(inventario) = seq(from = 1, to = length(inventario[,1]), by = 1)
 
-inventario$COD_TALHAO = paste(inventario$Fazenda, inventario$Projeto, inventario$MG,
-                           inventario$ESPAC, inventario$TALHAO, sep = "_")
+inventario$COD_TALHAO = paste(inventario$Fazenda, inventario$MG,
+                              inventario$ESPAC, inventario$TALHAO, sep = "_")
 
-inventario$COD_ESP = paste(inventario$Fazenda, inventario$Projeto, inventario$MG,
+inventario$COD_ESP = paste(inventario$Fazenda, inventario$MG,
                            inventario$ESPAC, sep = "_")
+
+library(stringr)
+inventario$COD_ESP = str_replace_all(inventario$COD_ESP, " ","" )
+inventario$COD_ESP = str_replace_all(inventario$COD_ESP, ",","." )
 
 inventario$HD = c()
 
@@ -42,8 +59,6 @@ Tab_Ht = data.frame("COD_TALHAO" = Tab_Ht$COD_TALHAO, "COD_ESP" = Tab_Ht$COD_ESP
                     "Parcela"=Tab_Ht$PARCELA, "Cova" = Tab_Ht$COVA, "DAP" = Tab_Ht$DAP, "HT" = Tab_Ht$HT,
                     "HD" = Tab_Ht$HD)
 
-row.names(Tab_Ht) = seq(from = 1, to = length(Tab_Ht[,1]), by = 1)
-
 library(ggplot2)
 ggplot(
   data = Tab_Ht,
@@ -54,18 +69,19 @@ ggplot(
   ylab("HT(m)")+
   geom_smooth(method = "lm", se = FALSE)
 
+
 for (i in unique(Tab_Ht$COD_ESP)) {
   print(ggplot(
     data = Tab_Ht[Tab_Ht$COD_ESP == i, c("DAP","HT")],
     aes(x = DAP, y = HT))+
-    geom_point()+
-    theme_classic()+
-    ggtitle(i)+
-    theme(plot.title = element_text(hjust = 0.5))+
-    xlab("DAP(cm)")+
-    ylab("HT(m)")+
-    geom_smooth(method = "lm", se = FALSE))
-  }
+      geom_point()+
+      theme_classic()+
+      ggtitle(i)+
+      theme(plot.title = element_text(hjust = 0.5))+
+      xlab("DAP(cm)")+
+      ylab("HT(m)")+
+      geom_smooth(method = "lm", se = FALSE))
+}
 
 Tab_Ht$invDAP = 1/Tab_Ht$DAP
 
@@ -92,7 +108,7 @@ for(i in unique(Tab_Ht$COD_ESP)){
   Tab_Ht[Tab_Ht$COD_ESP == i, "HT_Eq1"] = 
     exp(Equacoes_HT[[i]][["Eq1_HT"]]$coefficients[1] + 
           Equacoes_HT[[i]][["Eq1_HT"]]$coefficients[2]*Tab_Ht[Tab_Ht$COD_ESP == i,
-                                                                  "invDAP"])
+                                                              "invDAP"])
   
   Tab_Ht[Tab_Ht$COD_ESP == i, "HT_Eq2"] = 
     exp(Equacoes_HT[[i]][["Eq2_HT"]]$coefficients[1] + 
@@ -101,7 +117,6 @@ for(i in unique(Tab_Ht$COD_ESP)){
                                                                   "HD"]))
 }
 
-# Cálculo dos resíduos
 TabResHt = data.frame("COD_ESP" = Tab_Ht$COD_ESP,
                       "HT" = Tab_Ht$HT,
                       "HT_eq1" = Tab_Ht$HT_Eq1,
@@ -298,7 +313,7 @@ for (i in unique(TabResHt$COD_ESP)) {
       layout.pos.col = 1))
 }
 
-# Cálculo da altura por árvore
+# Cálculo da altura por fuste
 inventario$Ht_Est = c()
 
 for(i in unique(inventario$COD_ESP)){
@@ -306,13 +321,13 @@ for(i in unique(inventario$COD_ESP)){
   inventario[inventario$COD_ESP == i, "Ht_Est"] = 
     exp(Equacoes_HT[[i]][["Eq2_HT"]]$coefficients[1] + 
           Equacoes_HT[[i]][["Eq2_HT"]]$coefficients[2] / 
-            inventario[inventario$COD_ESP == i,"DAP"]+
+          inventario[inventario$COD_ESP == i,"DAP"]+
           Equacoes_HT[[i]][["Eq2_HT"]]$coefficients[3] * 
-            log(inventario[inventario$COD_ESP == i, "HD"]))
+          log(inventario[inventario$COD_ESP == i, "HD"]))
 }
 
 ht_final = function(x){
-   if (x[1] > 0 ) {
+  if (x[1] > 0 ) {
     y = x[1]
   } else {
     y = x[2]
@@ -321,12 +336,12 @@ ht_final = function(x){
 
 inventario$HT_Final = apply(inventario[,c("HT", "Ht_Est")],1,FUN = ht_final) 
 
-# Cálculo do volume por árvore (m3)
-inventario$Vol_Arv = c()
+# Cálculo do volume por fuste
+inventario$Vol_Fuste = c()
 
 for(i in unique(inventario$COD_ESP)){
   
-  inventario[inventario$COD_ESP == i, "Vol_Arv"] =
+  inventario[inventario$COD_ESP == i, "Vol_Fuste"] =
     exp(Equacoes_Vol[[i]][["Eq1_vol"]]$coefficients[1] + 
           Equacoes_Vol[[i]][["Eq1_vol"]]$coefficients[2]*log(inventario[inventario$COD_ESP == i,
                                                                         "DAP"])+
@@ -335,23 +350,92 @@ for(i in unique(inventario$COD_ESP)){
 }
 
 # Cálculo do volume por parcela (m3/ha) e por talhão (m3)
-Inventario_Parcela = inventario[,c("COD_ESP","COD_TALHAO","AREA_TALHÃO", "PARCELA","AREA_PARCELA")]
+Inventario_Parcela = inventario[,c("COD_ESP","COD_TALHAO","AREA_TALHAO", "PARCELA","AREA_PARCELA")]
 Inventario_Parcela = unique(Inventario_Parcela)
 Inventario_Parcela$Vol_parc = c()
 
 for (i in unique(inventario$COD_TALHAO)) {
-  aux_parcela = inventario[inventario$COD_TALHAO == i, c("PARCELA","Vol_Arv")]
+  aux_parcela = inventario[inventario$COD_TALHAO == i, c("PARCELA","Vol_Fuste")]
   Inventario_Parcela[Inventario_Parcela$COD_TALHAO == i, "Vol_parc"] = 
-    tapply(aux_parcela$Vol_Arv, aux_parcela$PARCELA, sum)
+    tapply(aux_parcela$Vol_Fuste, aux_parcela$PARCELA, sum)
 }
 
 Inventario_Parcela$Vol_Parc_ha = Inventario_Parcela$Vol_parc/
-                                    (Inventario_Parcela$AREA_PARCELA/10000)
+  (Inventario_Parcela$AREA_PARCELA/10000)
 
 Inventario_Parcela$Vol_Talhao_m3 = c()
 
 for (i in unique(Inventario_Parcela$COD_TALHAO)) {
   Inventario_Parcela[Inventario_Parcela$COD_TALHAO == i, "Vol_Talhao_m3"] = 
     mean(Inventario_Parcela[Inventario_Parcela$COD_TALHAO == i, "Vol_Parc_ha"]) *
-            unique(Inventario_Parcela[Inventario_Parcela$COD_TALHAO == i, "AREA_TALHÃO"])
+    unique(Inventario_Parcela[Inventario_Parcela$COD_TALHAO == i, "AREA_TALHAO"])
 }
+
+# Cálculo do erro de amostragem 
+Tab_Area  = unique(Inventario_Parcela[,c("COD_ESP","AREA_TALHAO")])
+Tab_Area
+Tab_Area = data.frame("COD_ESP" = unique(Tab_Area$COD_ESP), 
+                      "Area_Talhao" =  tapply(Tab_Area$AREA_TALHAO, Tab_Area$COD_ESP, sum))
+Tab_Area
+row.names(Tab_Area) = seq(from = 1, to = length(Tab_Area[,1]), by = 1)
+
+Tab_Estratos = data.frame("Estrato" = unique(Inventario_Parcela$COD_ESP),
+                             "nj" = tapply(Inventario_Parcela$Vol_Parc_ha , 
+                                           Inventario_Parcela$COD_ESP, length)[unique(
+                                             Inventario_Parcela$COD_ESP)],
+                             "E_Nj" = Tab_Area$Area_Talhao*10000/ tapply(Inventario_Parcela$AREA_PARCELA, 
+                                                                  Inventario_Parcela$COD_ESP, mean)[unique(Inventario_Parcela$COD_ESP)], 
+                             "Yij" = tapply(Inventario_Parcela$Vol_Parc_ha , 
+                                            Inventario_Parcela$COD_ESP, sum)[unique(
+                                              Inventario_Parcela$COD_ESP)],
+                             "Pj" = Tab_Area$Area_Talhao/sum(Tab_Area$Area_Talhao),
+                             "E_Y2ij" = tapply(Inventario_Parcela$Vol_Parc_ha , 
+                                               Inventario_Parcela$COD_ESP, FUN = function(x){
+                                                 sum(x^2)})[unique(Inventario_Parcela$COD_ESP)],
+                             "M_Yj" = tapply(Inventario_Parcela$Vol_Parc_ha , 
+                                             Inventario_Parcela$COD_ESP, mean)[unique(
+                                               Inventario_Parcela$COD_ESP)],
+                             "S2j" = tapply(Inventario_Parcela$Vol_Parc_ha , 
+                                            Inventario_Parcela$COD_ESP, var)[unique(
+                                              Inventario_Parcela$COD_ESP)],
+                             "Sj" = tapply(Inventario_Parcela$Vol_Parc_ha , 
+                                           Inventario_Parcela$COD_ESP, sd)[unique(
+                                             Inventario_Parcela$COD_ESP)]) 
+
+row.names(Tab_Estratos) = seq(from = 1, to = length(Tab_Estratos[,1]), by = 1)
+
+Tab_Estratos$PjSj = Tab_Estratos$Pj * Tab_Estratos$Sj
+
+Tab_Estratos$PjS2j = Tab_Estratos$Pj * Tab_Estratos$S2j
+
+Tab_Estratos$PjM_Yj = Tab_Estratos$Pj * Tab_Estratos$M_Yj
+
+S2M_Y = (sum(Tab_Estratos$PjSj)^2)/sum(Tab_Estratos$nj) - 
+  sum(Tab_Estratos$PjS2j)/sum(Tab_Estratos$E_Nj)
+
+S2M_Y
+
+S.M_Y = sqrt(S2M_Y)
+S.M_Y
+
+S2P_Y = sum(Tab_Estratos$E_Nj)^2 * S2M_Y
+S2P_Y
+
+S.P_Y = sqrt(S2P_Y)
+S.P_Y
+
+Erro_Amostragem = S.M_Y * qt(0.975, df = (sum(Tab_Estratos$nj - 1)))
+Erro_Amostragem
+
+Erro_Amostragem_perc = 100 * Erro_Amostragem / sum(Tab_Estratos$PjM_Yj)
+Erro_Amostragem_perc
+
+LI = sum(Tab_Estratos$PjM_Yj) * sum(Tab_Estratos$E_Nj) - S.P_Y *
+  qt(0.975, df = (sum(Tab_Estratos$nj - 1)))
+
+LI
+
+LS = sum(Tab_Estratos$PjM_Yj) * sum(Tab_Estratos$E_Nj) + S.P_Y *
+  qt(0.975, df = (sum(Tab_Estratos$nj - 1)))
+
+LS
