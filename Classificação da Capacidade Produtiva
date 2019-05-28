@@ -1,0 +1,260 @@
+# Curvas anamórficas e tabela para Índice de Local
+library(ggplot2)
+library(RColorBrewer)
+library(grid)
+Id_Ref = 72
+
+Capacidade_Prod = read.csv("Capacidade_Produtiva.csv", header = TRUE, sep = ';', dec = ',')
+head(Capacidade_Prod)
+names(Capacidade_Prod)[8] = "ESPAC"
+names(Capacidade_Prod)[11] = "Hd"
+names(Capacidade_Prod)[1] = "TALHAO"
+
+Capacidade_Prod = Capacidade_Prod[,c(1,2,3,7,8,9,11,12)]
+Capacidade_Prod = Capacidade_Prod[order(Capacidade_Prod$Id, decreasing = FALSE),]
+Capacidade_Prod = Capacidade_Prod[order(Capacidade_Prod$PARCELA, decreasing = FALSE),]
+Capacidade_Prod = Capacidade_Prod[Capacidade_Prod$PROJETO == "B",]
+
+Talhoes = Capacidade_Prod[,c("TALHAO","Id","Hd")]
+Talhoes
+Talhoes[Talhoes$Id %% 5 == 0, "Id"] = Talhoes[Talhoes$Id %% 5 == 0, "Id"] + 0.1
+Talhoes$Id = (ceiling(Talhoes$Id/5)*5)-2.5
+
+Talhoes = tapply(Talhoes$Hd, list(Talhoes$Id, Talhoes$TALHAO), mean)
+Talhoes = as.data.frame(Talhoes)
+
+Grafico_Talhoes = data.frame("Id" = c(), "Hd" = c(), "Talhao" = c())
+for (i in names(Talhoes) ) {
+  Talhao = data.frame("Id" = as.integer(row.names(Talhoes)),
+                      "Hd" = Talhoes[,i],
+                      "Talhao" = rep(i, each = length(Talhoes[,i])))
+  
+  Grafico_Talhoes = rbind(Grafico_Talhoes, Talhao)
+}
+
+ggplot(data = Grafico_Talhoes, 
+       aes(x = Id, y = Hd, color = Talhao)) + 
+  geom_smooth(method = lm, formula = y ~ splines::bs(x, 3), se = FALSE, lwd = 0.5)+
+  scale_fill_gradient() +
+  theme_classic()
+
+Capacidade_Prod$invId = 1 / Capacidade_Prod$Id
+
+Reg_Schum = lm(log(Capacidade_Prod$Hd) ~ Capacidade_Prod$invId)
+Reg_Schum
+summary(Reg_Schum)
+
+Reg_Richards = nls(Hd ~ a/(1+b*exp(-c*Id)), data = Capacidade_Prod, start = list(a = 20, b = 4, c = 0.01))
+Reg_Richards
+summary(Reg_Richards)
+
+Predicoes = data.frame("Id" = Capacidade_Prod$Id,"HD_obs" = Capacidade_Prod$Hd, "HD_Schu" = exp(predict(Reg_Schum)),
+                       "HD_Richards" = predict(Reg_Richards))
+
+Predicoes$HDobs_HDest_Schu = Predicoes$HD_obs - Predicoes$HD_Schu
+Predicoes$HDobs_HDest_Richards = Predicoes$HD_obs - Predicoes$HD_Richards
+Predicoes$Res_Schu = 100 * (Predicoes$HD_Schu - Predicoes$HD_obs) / Predicoes$HD_obs
+Predicoes$Res_Richards = 100 * (Predicoes$HD_Richards - Predicoes$HD_obs) / Predicoes$HD_obs
+
+# Análise gráfica dos resíduos para a população
+viewport = viewport(
+  layout = grid.layout(2,1)
+)
+
+grid.newpage()
+pushViewport(viewport)
+
+Residuo_Schu = ggplot(
+  data = Predicoes,
+  aes(x = HD_obs, y = Res_Schu))+
+  geom_point(lwd=0.5)+
+  theme_classic()+
+  ggtitle("Gráfico de Resíduo")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  xlab("")+
+  ylab("Resíduo")+
+  ylim(c(min(Predicoes$Res_Schu,Predicoes$Res_Richards),
+         max(Predicoes$Res_Schu,Predicoes$Res_Richards)))+
+  geom_hline(yintercept=0, lwd = 0.1, col='Black')
+
+print(
+  x = Residuo_Schu,
+  vp = viewport(
+    layout.pos.row = 1,
+    layout.pos.col = 1))
+
+Residuo_Richards = ggplot(
+  data = Predicoes,
+  aes(x = HD_obs, y = Res_Richards))+
+  geom_point(lwd=0.5)+
+  theme_classic()+
+  ggtitle("")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  xlab("Altura Dominante (m)")+
+  ylab("Resíduo")+
+  ylim(c(min(Predicoes$Res_Schu,Predicoes$Res_Richards),
+         max(Predicoes$Res_Schu,Predicoes$Res_Richards)))+
+  geom_hline(yintercept=0, lwd = 0.1, col='Black')
+
+print(
+  x = Residuo_Richards,
+  vp = viewport(
+    layout.pos.row = 2,
+    layout.pos.col = 1))
+
+Bias = function(Y_Est, Y_Obs){
+  100/length(Y_Est)*sum(Y_Obs - Y_Est)
+}
+
+Bias_Schu = Bias(Predicoes$HD_Schu, Predicoes$HD_obs)
+Bias_Schu
+
+Bias_Richards = Bias(Predicoes$HD_Richards, Predicoes$HD_obs)
+Bias_Richards
+
+RQEM = function(Y_Est, Y_Obs){
+  100/mean(Y_Obs)*sqrt(sum((Y_Obs - Y_Est)^2)/length(Y_Obs))
+}
+
+RQEM_Schu = RQEM(Predicoes$HD_Schu ,Predicoes$HD_obs)
+RQEM_Schu
+
+RQEM_Richards = RQEM(Predicoes$HD_Richards, Predicoes$HD_obs)
+RQEM_Richards 
+
+New_Id_Ref <- data.frame(Id = c(72))
+
+S_Id_Ref = predict(Reg_Richards, newdata = New_Id_Ref)
+S_Id_Ref
+
+Funcao_Reg_Richards = function(x) {coef(Reg_Richards)[1]/(1 + coef(Reg_Richards)[2] * exp(-coef(Reg_Richards)[3] * x))}   # define a função
+plot(Funcao_Reg_Richards, from = 10, to = 130, ylim = range(c(10,35)))
+
+S_Hd_Obs = (Predicoes$HD_obs * (1 + coef(Reg_Richards)[2] * exp(-coef(Reg_Richards)[3] * Predicoes$Id))) /
+  (1 + coef(Reg_Richards)[2] * exp(-coef(Reg_Richards)[3] * Id_Ref))
+S_Hd_Obs
+
+minS = floor(min(S_Hd_Obs))
+minS
+
+maxS = ceiling(max(S_Hd_Obs))
+maxS 
+
+Curva_S = function(Classe_S, coeficientes, Idade_f){
+  Classe_S * (1 + coeficientes[2] * exp(-coeficientes[3] * Id_Ref)) /
+    (1 + coeficientes[2] * exp(-coeficientes[3] * Idade_f))
+}
+
+# Número de classes
+n_classes = 5
+n_classes = seq(from = 1, to = n_classes, by = 1)
+n_classes = paste("Classe_", n_classes, sep = "")
+
+Curvas_Classe_S = data.frame("Id" = c(), "Hd" = c(), "Classe_SS" = c())
+S_Classe = minS
+
+for (i in n_classes) {
+  aux = data.frame("Id" = unique(Predicoes$Id), 
+                   "Hd" = Curva_S(S_Classe, coef(Reg_Richards), unique(Predicoes$Id)), "Classe_SS" = i)
+  Curvas_Classe_S = rbind(Curvas_Classe_S, aux)
+  S_Classe = S_Classe + ceiling((maxS - minS)/(length(n_classes) - 1))
+}
+
+Curvas_Classe_S = unique(Curvas_Classe_S)
+
+ggplot(data = Curvas_Classe_S, 
+       aes(x = Id, y = Hd, color = Classe_SS)) + 
+  geom_line(lwd = 0.5)+
+  scale_color_brewer(palette="Dark2") + 
+  ylim (range(0,45))+
+  theme_classic()
+
+Classes_S_CG = seq(from = ceiling(minS), to = ceiling(maxS)+6, by = 2)
+
+Idades_CG  = seq(from = 24, to = 136, by = 6)
+Indices_Local_CG = data.frame("Idade" = Idades_CG)
+
+for (i in Classes_PP) {
+  Indices_Local_CG[,as.character(i)] = Curva_S(i, coef(Reg_Richards), Idades_CG)
+}
+names(Indices_Local_CG)[-1] = paste("S",names(Indices_Local_CG)[-1], sep = "")
+Indices_Local_CG
+
+######################################################################################
+# Curvas polimórficas pelo método da Medição de Parâmetros
+Coeficientes_PP = data.frame()
+Equacoes_Parcela = list()
+chute_a = c()
+
+# Nessa etapa, pode ser que os chutes para ajustar o modelo de Richards adaptado não sejam adequados
+# para todas parcelas, necessitando o ajuste por parcela fora do loop
+for(i in unique(Capacidade_Prod$PARCELA)){
+  Tabela_PARCELA = Capacidade_Prod[Capacidade_Prod$PARCELA == i, ]
+  chute_a = mean(Tabela_PARCELA$Hd) 
+  
+  Eq = nls(Hd ~ a*(1-exp(-b*Id))^c, data = Tabela_PARCELA, start = list(a=chute_a, b=0.01, c= 1))
+  
+  Eq
+  summary(Eq)
+  
+  Equacoes_Parcela[[i]] = Eq
+  Coeficientes_PP = rbind(Coeficientes_PP, coef(Equacoes_Parcela[[i]]))    
+}
+
+names(Coeficientes_PP)[1] = "B0"
+names(Coeficientes_PP)[2] = "B1"
+names(Coeficientes_PP)[3] = "B2"
+
+Coeficientes_PP$S = Coeficientes_PP$B0*(1-exp(-Coeficientes_PP$B1 * Id_Ref))^Coeficientes_PP$B2
+Coeficientes_PP$S2 = Coeficientes_PP$S^2
+
+Reg_B0 = lm(B0 ~ S + S2, data = Coeficientes_PP)
+Reg_B0
+
+Reg_B1 = lm(B1 ~ S + S2, data = Coeficientes_PP)
+Reg_B1
+
+Reg_B2 = nls(B2 ~ exp(a + b * S), data = Coeficientes_PP, start = list(a = 1, b = 0.1))
+Reg_B2
+
+S_Ind = c()
+
+PP1 = coef(Reg_B0)[1]
+PP2 = coef(Reg_B0)[2]
+PP3 = coef(Reg_B0)[3]
+PP4 = coef(Reg_B1)[1]
+PP5 = coef(Reg_B1)[2]
+PP6 = coef(Reg_B1)[3]
+PP7 = coef(Reg_B2)[1]
+PP8 = coef(Reg_B2)[2]
+
+S_Est = function(S_Ind, I){
+  (PP1 + PP2 * S_Ind + PP3 * S_Ind^2) * 
+    (1 - exp(-(PP4 + PP5 * S_Ind + PP6 * S_Ind^2) * I)) ^ exp(PP7+PP8 * S_Ind)
+}
+
+Classes_PP = seq(from = floor(min(Coeficientes_PP$S)), to = ceiling(max(Coeficientes_PP$S))+2, by = 2)
+
+Idades_PP  = seq(from = 24, to = 102, by = 6)
+Indices_Local = data.frame("Idade" = Idades_PP)
+
+for (i in Classes_PP) {
+  Indices_Local[,as.character(i)] = S_Est(i,Indices_Local$Idade)
+}
+names(Indices_Local)[-1] = paste("S",names(Indices_Local)[-1], sep = "")
+
+Curvas_PP = data.frame()
+
+for (i in names(Indices_Local)[-1]) {
+  aux_Classe_S = data.frame("Idade" = Indices_Local$Idade, "Hd" = Indices_Local[,i], "Classe_S" = i)
+  Curvas_PP = rbind(Curvas_PP, aux_Classe_S)
+}
+
+ggplot(
+  data = Curvas_PP,
+  aes(x = Idade, y = Hd, color = Classe_S))+
+  geom_line(lwd = 0.5)+
+  scale_color_brewer(palette="Paired") + 
+  theme_classic()+
+  xlab("Idade")+
+  ylab("S")
