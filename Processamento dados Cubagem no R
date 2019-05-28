@@ -113,17 +113,9 @@ for(i in unique(Tab_Vol_Arv$COD_ESP)){
   Equacoes_Vol[[i]][["Eq1_vol"]] = Eq1_vol
   Equacoes_Vol[[i]][["Eq2_vol"]] = Eq2_vol
   
-  Tab_Vol_Arv[Tab_Vol_Arv$COD_ESP == i, "Vol_Eq1"] = 
-    exp(Equacoes_Vol[[i]][["Eq1_vol"]]$coefficients[1] + 
-          Equacoes_Vol[[i]][["Eq1_vol"]]$coefficients[2]*log(Tab_Vol_Arv[Tab_Vol_Arv$COD_ESP == i,
-                                                                     "DAP"])+
-          Equacoes_Vol[[i]][["Eq1_vol"]]$coefficients[3]*log(Tab_Vol_Arv[Tab_Vol_Arv$COD_ESP == i,
-                                                                     "HT"]))
+  Tab_Vol_Arv[Tab_Vol_Arv$COD_ESP == i, "Vol_Eq1"] = exp(predict(Equacoes_Vol[[i]][["Eq1_vol"]]))
   
-  Tab_Vol_Arv[Tab_Vol_Arv$COD_ESP == i, "Vol_Eq2"] = 
-    exp(Equacoes_Vol[[i]][["Eq2_vol"]]$coefficients[1] + 
-          Equacoes_Vol[[i]][["Eq2_vol"]]$coefficients[2]*Tab_Vol_Arv[Tab_Vol_Arv$COD_ESP == i,
-                                                                 "inv_DAP"])
+  Tab_Vol_Arv[Tab_Vol_Arv$COD_ESP == i, "Vol_Eq2"] = exp(predict(Equacoes_Vol[[i]][["Eq2_vol"]]))
 }
 
 # Cálculo dos resíduos
