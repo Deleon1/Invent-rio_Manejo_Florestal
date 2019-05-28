@@ -105,16 +105,9 @@ for(i in unique(Tab_Ht$COD_ESP)){
   Equacoes_HT[[i]][["Eq1_HT"]] = ht_eq1
   Equacoes_HT[[i]][["Eq2_HT"]] = ht_eq2
   
-  Tab_Ht[Tab_Ht$COD_ESP == i, "HT_Eq1"] = 
-    exp(Equacoes_HT[[i]][["Eq1_HT"]]$coefficients[1] + 
-          Equacoes_HT[[i]][["Eq1_HT"]]$coefficients[2]*Tab_Ht[Tab_Ht$COD_ESP == i,
-                                                              "invDAP"])
+  Tab_Ht[Tab_Ht$COD_ESP == i, "HT_Eq1"] = exp(predict(Equacoes_HT[[i]][["Eq1_HT"]]))
   
-  Tab_Ht[Tab_Ht$COD_ESP == i, "HT_Eq2"] = 
-    exp(Equacoes_HT[[i]][["Eq2_HT"]]$coefficients[1] + 
-          Equacoes_HT[[i]][["Eq2_HT"]]$coefficients[2]*Tab_Ht[Tab_Ht$COD_ESP == i,"invDAP"]+
-          Equacoes_HT[[i]][["Eq2_HT"]]$coefficients[3]*log(Tab_Ht[Tab_Ht$COD_ESP == i,
-                                                                  "HD"]))
+  Tab_Ht[Tab_Ht$COD_ESP == i, "HT_Eq2"] = exp(predict(Equacoes_HT[[i]][["Eq2_HT"]]))
 }
 
 TabResHt = data.frame("COD_ESP" = Tab_Ht$COD_ESP,
